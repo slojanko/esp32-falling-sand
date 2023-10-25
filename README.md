@@ -1,5 +1,7 @@
 # ESP32 Falling Sand
 
+![Demo](https://raw.githubusercontent.com/slojanko/esp32-falling-sand/main/demo.gif?raw=true)
+
 ESP32-S3 implementation of the falling sand demo, displayed on a Matrix display. Project uses the following components:
 
 * ESP32-S3
