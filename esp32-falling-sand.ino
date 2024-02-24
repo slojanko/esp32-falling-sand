@@ -1,10 +1,12 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include "SD.h"
+#include "FS.h"
 
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 64
 #define PANEL_CHAIN 1
 
-#define SAND_COUNT 1000
+#define SAND_COUNT 1024
 #define SAND_SCENE_SCALE 256
 #define SAND_SCENE_X (PANEL_RES_Y * SAND_SCENE_SCALE - 1) // Highest allowed x in sand scene
 #define SAND_SCENE_Y (PANEL_RES_Y * SAND_SCENE_SCALE - 1) // Highest allowed y in sand scene
@@ -12,6 +14,12 @@
 // Joystick
 #define VRX_PIN 14
 #define VRY_PIN 13
+
+// microSD Card Reader connections
+#define SD_CS         7
+#define SPI_MOSI      15 
+#define SPI_MISO      17
+#define SPI_SCK       16
 
 #define MAX_FPS 45
 #define TIME_STEP (1000 / MAX_FPS)
@@ -45,22 +53,47 @@ void setup() {
 	dma_display -> clearScreen();
 	dma_display -> setRotation(0);
 
+	// Set microSD Card CS as OUTPUT and set HIGH
+	pinMode(SD_CS, OUTPUT);      
+	digitalWrite(SD_CS, HIGH); 
+
+	// Initialize SPI bus for microSD Card
+	SPI.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
+
+	// Start microSD Card
+	if(!SD.begin(SD_CS))
+	{
+	Serial.println("Error accessing microSD card!");
+		while(true); 
+	}
+	uint16_t* temp = (uint16_t*)malloc(64*64*2);
+	File openFile = SD.open("/NeverGonnaGiveYouUp");
+	openFile.read((uint8_t*)temp, 64*64*2);
+	openFile.close();
+
 	for (int i = 0; i < SAND_COUNT; i++) {
 		uint16_t panelPixel = 0;
-		do {
-			sand[i].x = random(PANEL_RES_X * SAND_SCENE_SCALE);
-			sand[i].y = random(PANEL_RES_Y * SAND_SCENE_SCALE);
+		// do {
+		// 	sand[i].x = random(PANEL_RES_X * SAND_SCENE_SCALE);
+		// 	sand[i].y = random(PANEL_RES_Y * SAND_SCENE_SCALE);
 
-			panelPixel = (sand[i].y / SAND_SCENE_SCALE) * PANEL_RES_X + (sand[i].x / SAND_SCENE_SCALE);
+		// 	panelPixel = (sand[i].y / SAND_SCENE_SCALE) * PANEL_RES_X + (sand[i].x / SAND_SCENE_SCALE);
 
-		} while (imagePtr[panelPixel] != 0);
+		// } while (imagePtr[panelPixel] != 0);
+
+		sand[i].x = ((i * 4) % 64 + random(0, 2)) * 256;
+		sand[i].y = ((i * 4) / 64 + random(0, 2)) * 256;
+
+		panelPixel = (sand[i].y / SAND_SCENE_SCALE) * PANEL_RES_X + (sand[i].x / SAND_SCENE_SCALE);
 
 		sand[i].panelPixel = panelPixel;
 		sand[i].vx = 0;
 		sand[i].vy = 0;
-		sand[i].colour = random(256 * 256);
+		sand[i].colour = temp[panelPixel];
 		imagePtr[panelPixel] = sand[i].colour;
 	}
+
+	free(temp);
 
 	// Watchdog is something that runs in background to prevent cpu core being hugged by a single task for too long
 	// You can disable it per core, per task or temporarily put task to sleep
@@ -79,6 +112,7 @@ void loop() {
 void pixelTask(void * param) {
 	// Disable watchdog per task
 	// esp_task_wdt_init(5, false);
+	vTaskDelay(5000 / portTICK_PERIOD_MS);
 
 	uint32_t prevTime = millis();
 	//TickType_t xLastWakeTime = xTaskGetTickCount();
@@ -118,8 +152,8 @@ void pixelTask(void * param) {
 		float v;
 		// Limit max speed
 		for (int i = 0; i < SAND_COUNT; i++) {
-			sand[i].vx += ax + random(-4, 5);
-			sand[i].vy += ay + random(-4, 5);
+			sand[i].vx += ax + random(-2, 3);
+			sand[i].vy += ay + random(-2, 3);
 
 			v2 = (int32_t) sand[i].vx * sand[i].vx + (int32_t) sand[i].vy * sand[i].vy;
 			if (v2 > 65536) {
